@@ -16,11 +16,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
 ::Chef::Recipe.send(:include, Opscode::OpenSSL::Password)
 include_recipe "keystone::keystone-rsyslog"
-include_recipe "mysql::client"
-include_recipe "mysql::ruby"
+if node['db']['provider'] == 'mysql'
+  include_recipe "mysql::client"
+  include_recipe "mysql::ruby"
+end
+if node['db']['provider'] == 'postgresql'
+  include_recipe "postgresql::client"
+  include_recipe "postgresql::ruby"
+end
 include_recipe "osops-utils"
 include_recipe "monitoring"
 
@@ -38,23 +43,40 @@ end
 platform_options = node["keystone"]["platform"]
 
 #creates db and user, returns connection info, defined in osops-utils/libraries
-mysql_info = create_db_and_user("mysql",
-                                node["keystone"]["db"]["name"],
-                                node["keystone"]["db"]["username"],
-                                node["keystone"]["db"]["password"])
-mysql_connect_ip = get_access_endpoint('mysql-master', 'mysql', 'db')["host"]
+if node['db']['provider'] == 'mysql'
+  mysql_info = create_db_and_user("mysql",
+                                  node["keystone"]["db"]["name"],
+                                  node["keystone"]["db"]["username"],
+                                  node["keystone"]["db"]["password"])
+  mysql_connect_ip = get_access_endpoint('mysql-master', 'mysql', 'db')["host"]
+end
+if node['db']['provider'] == 'postgresql'
+  postgresql_info = create_db_and_user("postgresql",
+                                  node["keystone"]["db"]["name"],
+                                  node["keystone"]["db"]["username"],
+                                  node["keystone"]["db"]["password"])
+  postgresql_connect_ip = get_access_endpoint('postgresql-master', 'postgresql', 'db')["host"]
+end
 
 ##### NOTE #####
 # https://bugs.launchpad.net/ubuntu/+source/keystone/+bug/931236 (Resolved)
 # https://bugs.launchpad.net/ubuntu/+source/keystone/+bug/1073273
 ################
 
-platform_options["mysql_python_packages"].each do |pkg|
-  package pkg do
-    action :install
+if node['db']['provider'] == 'mysql'
+  platform_options["mysql_python_packages"].each do |pkg|
+    package pkg do
+      action :install
+    end
   end
 end
-
+if node['db']['provider'] == 'postgresql'
+  platform_options["postgresql_python_packages"].each do |pkg|
+    package pkg do
+      action :install
+    end
+  end
+end
 
 platform_options["keystone_packages"].each do |pkg|
   package pkg do
@@ -121,30 +143,59 @@ else
   release = "folsom"
 end
 
-template "/etc/keystone/keystone.conf" do
-  source "#{release}/keystone.conf.erb"
-  owner "keystone"
-  group "keystone"
-  mode "0600"
+if node['db']['provider'] == 'mysql'
+  template "/etc/keystone/keystone.conf" do
+    source "#{release}/keystone.conf.erb"
+    owner "keystone"
+    group "keystone"
+    mode "0600"
+  
+    variables(
+              :debug => node["keystone"]["debug"],
+              :verbose => node["keystone"]["verbose"],
+              :user => node["keystone"]["db"]["username"],
+              :passwd => node["keystone"]["db"]["password"],
+              :ip_address => ks_admin_bind["host"],
+              :db_name => node["keystone"]["db"]["name"],
+              :db_ipaddress => mysql_connect_ip,
+              :service_port => ks_service_bind["port"],
+              :admin_port => ks_admin_bind["port"],
+              :admin_token => node["keystone"]["admin_token"],
+              :use_syslog => node["keystone"]["syslog"]["use"],
+              :log_facility => node["keystone"]["syslog"]["facility"],
+              :auth_type => node["keystone"]["auth_type"],
+              :ldap_options => node["keystone"]["ldap"]
+              )
+    notifies :run, resources(:execute => "keystone-manage db_sync"), :immediately
+    notifies :restart, resources(:service => "keystone"), :immediately
+  end
+end
+if node['db']['provider'] == 'postgresql'
+  template "/etc/keystone/keystone.conf" do
+    source "#{release}/keystone.postgresql.conf.erb"
+    owner "keystone"
+    group "keystone"
+    mode "0600"
 
-  variables(
-            :debug => node["keystone"]["debug"],
-            :verbose => node["keystone"]["verbose"],
-            :user => node["keystone"]["db"]["username"],
-            :passwd => node["keystone"]["db"]["password"],
-            :ip_address => ks_admin_bind["host"],
-            :db_name => node["keystone"]["db"]["name"],
-            :db_ipaddress => mysql_connect_ip,
-            :service_port => ks_service_bind["port"],
-            :admin_port => ks_admin_bind["port"],
-            :admin_token => node["keystone"]["admin_token"],
-            :use_syslog => node["keystone"]["syslog"]["use"],
-            :log_facility => node["keystone"]["syslog"]["facility"],
-            :auth_type => node["keystone"]["auth_type"],
-            :ldap_options => node["keystone"]["ldap"]
-            )
-  notifies :run, resources(:execute => "keystone-manage db_sync"), :immediately
-  notifies :restart, resources(:service => "keystone"), :immediately
+    variables(
+              :debug => node["keystone"]["debug"],
+              :verbose => node["keystone"]["verbose"],
+              :user => node["keystone"]["db"]["username"],
+              :passwd => node["keystone"]["db"]["password"],
+              :ip_address => ks_admin_bind["host"],
+              :db_name => node["keystone"]["db"]["name"],
+              :db_ipaddress => postgresql_connect_ip,
+              :service_port => ks_service_bind["port"],
+              :admin_port => ks_admin_bind["port"],
+              :admin_token => node["keystone"]["admin_token"],
+              :use_syslog => node["keystone"]["syslog"]["use"],
+              :log_facility => node["keystone"]["syslog"]["facility"],
+              :auth_type => node["keystone"]["auth_type"],
+              :ldap_options => node["keystone"]["ldap"]
+              )
+    notifies :run, resources(:execute => "keystone-manage db_sync"), :immediately
+    notifies :restart, resources(:service => "keystone"), :immediately
+  end
 end
 
 

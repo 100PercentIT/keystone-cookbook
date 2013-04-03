@@ -77,32 +77,64 @@ end
 ks_admin_endpoint = get_bind_endpoint("keystone", "admin-api")
 ks_service_endpoint = get_bind_endpoint("keystone", "service-api")
 keystone = get_settings_by_role("keystone", "keystone")
-mysql_info = get_access_endpoint("mysql-master", "mysql", "db")
+if node['db']['provider'] == 'mysql'
+  mysql_info = get_access_endpoint("mysql-master", "mysql", "db")
+end
+if node['db']['provider'] == 'postgresql'
+  postgresql_info = get_access_endpoint('postgresql-master', 'postgresql', 'db')
+end
 
+if node['db']['provider'] == 'mysql'
+  template "/etc/keystone/keystone.conf" do
+    source "#{release}/keystone.conf.erb"
+    owner "keystone"
+    group "keystone"
+    mode "0600"
+  
+    variables(
+              :debug => keystone["debug"],
+              :verbose => keystone["verbose"],
+              :user => keystone["db"]["username"],
+              :passwd => keystone["db"]["password"],
+              :ip_address => ks_admin_endpoint["host"],
+              :db_name => keystone["db"]["name"],
+              :db_ipaddress => mysql_info["host"],
+              :service_port => ks_service_endpoint["port"],
+              :admin_port => ks_admin_endpoint["port"],
+              :admin_token => keystone["admin_token"],
+              :use_syslog => keystone["syslog"]["use"],
+              :log_facility => keystone["syslog"]["facility"],
+              :auth_type => keystone["auth_type"],
+              :ldap_options => keystone["ldap"]
+              )
+    notifies :restart, resources(:service => "keystone"), :immediately
+  end
+end
+if node['db']['provider'] == 'postgresql'
+  template "/etc/keystone/keystone.conf" do
+    source "#{release}/keystone.postgresql.conf.erb"
+    owner "keystone"
+    group "keystone"
+    mode "0600"
 
-template "/etc/keystone/keystone.conf" do
-  source "#{release}/keystone.conf.erb"
-  owner "keystone"
-  group "keystone"
-  mode "0600"
-
-  variables(
-            :debug => keystone["debug"],
-            :verbose => keystone["verbose"],
-            :user => keystone["db"]["username"],
-            :passwd => keystone["db"]["password"],
-            :ip_address => ks_admin_endpoint["host"],
-            :db_name => keystone["db"]["name"],
-            :db_ipaddress => mysql_info["host"],
-            :service_port => ks_service_endpoint["port"],
-            :admin_port => ks_admin_endpoint["port"],
-            :admin_token => keystone["admin_token"],
-            :use_syslog => keystone["syslog"]["use"],
-            :log_facility => keystone["syslog"]["facility"],
-            :auth_type => keystone["auth_type"],
-            :ldap_options => keystone["ldap"]
-            )
-  notifies :restart, resources(:service => "keystone"), :immediately
+    variables(
+              :debug => keystone["debug"],
+              :verbose => keystone["verbose"],
+              :user => keystone["db"]["username"],
+              :passwd => keystone["db"]["password"],
+              :ip_address => ks_admin_endpoint["host"],
+              :db_name => keystone["db"]["name"],
+              :db_ipaddress => postgresql_info["host"], 
+              :service_port => ks_service_endpoint["port"],
+              :admin_port => ks_admin_endpoint["port"],
+              :admin_token => keystone["admin_token"],
+              :use_syslog => keystone["syslog"]["use"],
+              :log_facility => keystone["syslog"]["facility"],
+              :auth_type => keystone["auth_type"],
+              :ldap_options => keystone["ldap"]
+              )
+    notifies :restart, resources(:service => "keystone"), :immediately
+  end
 end
 
 

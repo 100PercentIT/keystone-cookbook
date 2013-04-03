@@ -124,6 +124,7 @@ case platform
 when "fedora", "redhat", "centos"                                 # :pragma-foodcritic: ~FC024 - won't fix this
   default["keystone"]["platform"] = {                                       # node_attribute
     "mysql_python_packages" => [ "MySQL-python" ],
+    "postgresql_python_packages" => [ "python-psycopg2" ],
     "keystone_ldap_packages" => [ "python-ldap" ],
     "keystone_packages" => [ "openstack-keystone", "python-iso8601" ],
     "keystone_service" => "openstack-keystone",
@@ -133,6 +134,7 @@ when "fedora", "redhat", "centos"                                 # :pragma-food
 when "ubuntu"
   default["keystone"]["platform"] = {                                       # node_attribute
     "mysql_python_packages" => [ "python-mysqldb" ],
+    "postgresql_python_packages" => [ "python-psycopg2" ],
     "keystone_ldap_packages" => [ "python-ldap" ],
     "keystone_packages" => [ "keystone", "python-keystone", "python-keystoneclient" ],
     "keystone_service" => "keystone",
